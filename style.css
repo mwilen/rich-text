@@ -1,0 +1,25 @@
+h1,
+h2 {
+    font-family: Lato;
+}
+
+body,
+html {
+    margin: 0;
+}
+
+[contenteditable] {
+    background: transparent;
+    /* resize: both;
+  overflow: hidden; */
+    width: 100px;
+    height: 100px;
+    font-size: 11px;
+    word-break: keep-all;
+    outline: 1px solid black;
+}
+
+[contenteditable] div {
+    white-space: nowrap;
+    word-break: keep-all;
+}
