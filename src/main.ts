@@ -6,6 +6,7 @@ import {
     IRenderedText,
     IRenderedTextLine,
     IRenderedTextNode,
+    IStyle,
     IText,
     ITextLine,
     ITextNode,
@@ -87,7 +88,7 @@ const richTextData: IText = {
                             value: '15px',
                         },
                         {
-                            style: 'font-weight',
+                            style: 'fontWeight',
                             value: 'bold',
                         },
                     ],
@@ -105,18 +106,22 @@ const richTextData: IText = {
 };
 
 class RichText {
-    #richTextAnchor: HTMLElement;
-    #renderedRichText: IRenderedText;
-    #textModel: IText;
+    #richTextAnchor!: HTMLElement;
+    #renderedRichText!: IRenderedText;
+    #textModel!: IText;
     get #selection(): Selection {
-        return document.getSelection();
+        return document.getSelection()!;
     }
     #history: { undo: HistorySnapshot[]; redo: HistorySnapshot[] } = {
         undo: [],
         redo: [],
     };
 
-    constructor(text: IText, anchor: HTMLElement) {
+    constructor(text: IText, anchor?: HTMLElement | null) {
+        if (!anchor) {
+            throw new Error('No anchor provided.')
+        }
+
         this.init(anchor);
         this.renderText(text);
     }
@@ -188,6 +193,11 @@ class RichText {
 
         const selectionRange = selection.getRangeAt(0);
         const { startContainer, endContainer } = selectionRange;
+
+        if (!startContainer.parentElement || !endContainer.parentElement) {
+            return;
+        }
+
         const startLine = startContainer.parentElement.parentElement;
         const endLine = endContainer.parentElement.parentElement;
         const newTextSpan = document.createElement('span');
@@ -214,7 +224,7 @@ class RichText {
 
         if (isRangeBetweenDifferentContainers) {
             selectionRange.selectNode(endContainer);
-            const clonedNode = selectionRange.endContainer.parentNode.cloneNode(true);
+            const clonedNode = selectionRange.endContainer.parentNode!.cloneNode(true);
             const movedLineFragment = document.createDocumentFragment();
             const getLineStyles = this.getStylesFromDomElement(clonedNode as TextNodeRef);
 
@@ -228,11 +238,11 @@ class RichText {
 
             movedLineFragment.append(...clonedNode.childNodes);
 
-            selectionRange.selectNode(startLine.lastChild);
+            selectionRange.selectNode(startLine?.lastChild!);
             const clonedRange = selectionRange.cloneRange();
             selectionRange.collapse();
             selectionRange.insertNode(movedLineFragment);
-            selectionRange.selectNode(startLine.nextElementSibling);
+            selectionRange.selectNode(startLine?.nextElementSibling!);
             selection.deleteFromDocument();
             selection.removeAllRanges();
             selection.addRange(clonedRange);
@@ -297,7 +307,7 @@ class RichText {
 
     private addRedo(): void {
         this.#history.redo.push({
-            selection: structuredClone(this.#history.undo.at(-1).selection),
+            selection: structuredClone(this.#history.undo.at(-1)!.selection),
             model: structuredClone(this.#textModel),
         });
         console.log(this.#history);
@@ -311,15 +321,15 @@ class RichText {
         console.log('toggle bold');
 
         const selectionElement = range.cloneContents();
-        const commonAncestor = range.commonAncestorContainer;
-        const selectionContent = selectionElement.textContent;
-        const selectionNode = range.startContainer.parentElement;
+        const commonAncestor = range.commonAncestorContainer!;
+        const selectionContent = selectionElement.textContent!;
+        const selectionNode = range.startContainer.parentElement!;
         const clonedSelectionNode = selectionNode.cloneNode(true);
         const currentSelection = this.getModelSelection();
         const nodesBetween = currentSelection.nodesBetween;
         const fullNodeSelection =
             commonAncestor instanceof Text &&
-            commonAncestor.textContent.length === selectionContent.length;
+            commonAncestor.textContent?.length === selectionContent.length;
 
         let isTextNodeSelection = false;
         console.log(currentSelection, this.getRenderedTextNodeAtFocusPosition());
@@ -397,11 +407,11 @@ class RichText {
         }
 
         for (const node of modifiedNodes) {
-            const styleAtIndex = node.styles.findIndex(({ style }) => style === 'font-weight');
+            const styleAtIndex = node.styles.findIndex(({ style }) => style === 'fontWeight');
             if (styleAtIndex !== -1) {
                 node.styles.splice(styleAtIndex, 1);
             } else {
-                node.styles.push({ style: 'font-weight', value: 'bold' });
+                node.styles.push({ style: 'fontWeight', value: 'bold' });
             }
         }
 
@@ -418,7 +428,7 @@ class RichText {
 
         const currentAnchor = start;
         const currentFocus = end;
-        const newFocusNode = newEndNodes.at(-1);
+        const newFocusNode = newEndNodes.at(-1)!;
 
         const anchorNode: NodeSelection = {
             ...currentAnchor,
@@ -446,7 +456,7 @@ class RichText {
     }
 
     private getRenderedTextNodeAtFocusPosition(): IRenderedTextNode | undefined {
-        const focusNode = this.#selection.focusNode;
+        const focusNode = this.#selection.focusNode!;
 
         for (const line of this.#renderedRichText.lines) {
             for (const node of line.nodes) {
@@ -458,7 +468,7 @@ class RichText {
     }
 
     private getRenderedTextNodeAtAnchorPosition(): IRenderedTextNode | undefined {
-        const anchorNode = this.#selection.anchorNode;
+        const anchorNode = this.#selection.anchorNode!;
 
         for (const line of this.#renderedRichText.lines) {
             for (const node of line.nodes) {
@@ -474,16 +484,16 @@ class RichText {
         const nodeAtSelectionFocus = this.getRenderedTextNodeAtFocusPosition();
 
         if (!nodeAtSelectionAnchor || !nodeAtSelectionFocus) {
-            return;
+            throw new Error('No node within selection');
         }
 
         const textLines = this.#textModel.lines;
         const renderedTextLines = this.#renderedRichText.lines;
         const { anchorOffset, focusOffset } = this.#selection;
 
-        const modelSelection: ModelSelection = {
+        const modelSelection = {
             nodesBetween: [],
-        } as ModelSelection;
+        } as unknown as ModelSelection;
 
         for (let lineIndex = 0; lineIndex < textLines.length; lineIndex++) {
             const line = textLines[lineIndex];
@@ -527,6 +537,8 @@ class RichText {
                 }
             }
         }
+
+        throw new Error('Could not create selection model');
     }
 
     private parseDomToTextModel(): IText {
@@ -553,19 +565,19 @@ class RichText {
                         } else {
                             textLine.nodes.push({
                                 styles,
-                                text: node.textContent,
+                                text: node.textContent!,
                                 type: 'content',
                             });
                         }
                     } else if (node instanceof Text) {
                         const span = document.createElement('span');
                         span.textContent = node.textContent;
-                        const parentStyles = this.getStylesFromDomElement(node.parentElement);
+                        const parentStyles = this.getStylesFromDomElement(node.parentElement!);
                         this.applyStyles(span, parentStyles);
 
                         textLine.nodes.push({
                             styles: parentStyles,
-                            text: span.textContent,
+                            text: span.textContent!,
                             type: 'content',
                         });
                     }
@@ -594,8 +606,9 @@ class RichText {
 
                 for (let i = 0; i < child.childNodes.length; i++) {
                     const node = child.childNodes[i];
+                    const textContent = node.textContent ?? '';
 
-                    if (node.textContent.length === 0) {
+                    if (textContent.length === 0) {
                         continue;
                     }
 
@@ -604,13 +617,13 @@ class RichText {
                         const previousNode =
                             textLine.nodes.length > 0 ? textLine.nodes.at(-1) : undefined;
                         if (previousNode && deepEqual(styles, previousNode.styles)) {
-                            previousNode.text += node.textContent;
+                            previousNode.text += textContent;
                         } else {
                             textLine.nodes.push({
                                 parent: textLine,
                                 ref: node,
                                 styles,
-                                text: node.textContent,
+                                text: textContent,
                                 type: 'content',
                             });
                         }
@@ -622,7 +635,7 @@ class RichText {
                             parent: textLine,
                             ref: span,
                             styles: [],
-                            text: span.textContent,
+                            text: span.textContent!,
                             type: 'content',
                         });
                     }
@@ -650,8 +663,9 @@ class RichText {
 
                 for (let i = 0; i < child.childNodes.length; i++) {
                     const node = child.childNodes[i];
+                    const textContent = node.textContent ?? '';
 
-                    if (node.textContent.length === 0) {
+                    if (textContent.length === 0) {
                         continue;
                     }
 
@@ -665,17 +679,17 @@ class RichText {
                             previousNode &&
                             deepEqual(styles, previousNode.styles)
                         ) {
-                            previousNode.text += node.textContent;
+                            previousNode.text += textContent;
                         } else {
                             textLine.nodes.push({
                                 styles,
-                                text: node.textContent,
+                                text: textContent,
                                 type: 'content',
                             });
                         }
                     } else if (node instanceof Text) {
                         const span = document.createElement('span');
-                        span.textContent = node.textContent;
+                        span.textContent = textContent;
 
                         textLine.nodes.push({
                             styles: [],
@@ -700,11 +714,11 @@ class RichText {
         }
 
         for (const style of AllowedStyles) {
-            const styleValue = element.style[style];
+            const styleValue = element.style[style] as OneOfStyles['value'];
             if (styleValue) {
                 styles.push({
                     style,
-                    value: styleValue,
+                    value: styleValue as any,
                 });
             }
         }
@@ -813,41 +827,41 @@ class RichText {
     private applyStyles(span: HTMLSpanElement | HTMLDivElement, styles: OneOfStyles[]): void {
         for (const style of styles) {
             const styleAttribute = style.style;
-            span.style[styleAttribute as string] = style.value;
+            span.style[styleAttribute] = style.value;
         }
     }
 
     private resizeText(): void {
-        if (this.isTextWithinBounds()) {
+        const offsetWidth = this.#richTextAnchor.offsetWidth;
+
+        if (this.isTextWithinBounds(offsetWidth)) {
             return;
         }
 
         let iterations = 0;
+        const pre = performance.now();
 
-        while (!this.isTextWithinBounds()) {
+        while (!this.isTextWithinBounds(offsetWidth)) {
             let resized = false;
             iterations++;
 
             for (const line of this.#renderedRichText.lines) {
                 for (const node of line.nodes) {
-                    if (node.ref.getBoundingClientRect().right > this.#richTextAnchor.offsetWidth) {
+                    const boundingRect = node.ref.getBoundingClientRect();
+                    if (!this.isNodeWithinBounds(node, offsetWidth)) {
                         const margin =
-                            node.ref.getBoundingClientRect().right / this.#richTextAnchor.offsetWidth;
-                        // console.log(line.ref.style.fontSize, this.#richTextAnchor.style.fontSize);
+                            boundingRect.right / offsetWidth;
                         const fontSize = parseFloat(
                             line.ref.style.fontSize ?? this.#richTextAnchor.style.fontSize
                         );
-                        const multiplier = margin > 0.5 ? 1.01 : 1.001;
+                        const multiplier = margin > 1.05 ? 1.01 : 1.001;
                         console.log(margin);
-                        this.applyToAllLines({
+                        this.applyStyleToAllLines({
                             style: 'fontSize',
                             value: `${fontSize / multiplier}px`,
                         });
-                        // line.ref.style.fontSize = fontSize / 1.001 + 'px'
                         resized = true;
                     }
-
-                    // console.log(node.ref.getBoundingClientRect(), node.ref)
                 }
             }
 
@@ -856,14 +870,17 @@ class RichText {
             }
         }
 
+        const post = performance.now();
+        
+        console.log('performance', post-pre);
         console.log('iterations', iterations);
     }
 
-    private isTextWithinBounds(): boolean {
+    private isTextWithinBounds(offsetWidth: number): boolean {
         for (const line of this.#renderedRichText.lines) {
             for (const node of line.nodes) {
-                if (node.ref.getBoundingClientRect().right > this.#richTextAnchor.offsetWidth) {
-                    return false;
+                if (!this.isNodeWithinBounds(node, offsetWidth)) {
+                    return false
                 }
             }
         }
@@ -871,18 +888,26 @@ class RichText {
         return true;
     }
 
-    private applyToAllLines(style: OneOfStyles): void {
+    private isNodeWithinBounds(node: IRenderedTextNode, offsetWidth: number): boolean {
+        if (node.ref.getBoundingClientRect().right > offsetWidth) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private applyStyleToAllLines(style: OneOfStyles): void {
         for (const line of this.#renderedRichText.lines) {
             line.ref.style[style.style] = style.value;
         }
     }
 }
 
-const richText = new RichText(richTextData, document.getElementById('text'));
+const richText = new RichText(richTextData, document.querySelector<HTMLElement>('#text'));
 
 console.log(richText);
 
-document.querySelector('#render').addEventListener('click', () => {
+document.querySelector('#render')?.addEventListener('click', () => {
     const textModel = richText.getTextModel();
-    new RichText(textModel, document.querySelector('#rendered-text'));
+    new RichText(textModel, document.querySelector<HTMLElement>('#rendered-text'));
 });
